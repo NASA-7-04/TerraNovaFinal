@@ -1,0 +1,9 @@
+{
+    "planets": [
+        { "name":"Kepler-22 b", "host":"Kepler-22", "ra":285.679421, "dec":47.898941, "note":"거주가능대 후보, 슈퍼지구/미니넵튠 경계" },
+        { "name":"TRAPPIST-1 e", "host":"TRAPPIST-1", "ra":346.625000, "dec":-5.041000, "note":"지구 크기 유사, 거주가능대, 저온 M형 왜성" },
+        { "name":"Kepler-452 b", "host":"Kepler-452", "ra":285.681718, "dec":44.373902, "note":"지구 2.0 별칭, G형 항성" },
+        { "name":"Proxima Centauri b", "host":"Proxima Cen", "ra":217.429200, "dec":-62.679500, "note":"가장 가까운 외계행성, 플레어 환경" },
+        { "name":"55 Cancri e", "host":"55 Cnc", "ra":133.151000, "dec":28.330000, "note":"초고온 용암행성 후보" }
+    ]
+}

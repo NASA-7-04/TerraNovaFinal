@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>외계행성 전천 지도 (적경·적위 / SVG)</title>
+  <style>
+    :root{ --w: 4096; --h: 2048; }
+    body{ margin:0; background:#0b0f16; color:#e8eefc; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    header{ padding:14px 18px; background:#0f1521; border-bottom:1px solid #1f2a3a; position:sticky; top:0; z-index:2; }
+    h1{ font-size:18px; margin:0; }
+    .meta{ font-size:12px; opacity:.8; }
+    #wrap{ display:flex; gap:20px; padding:16px; }
+    #panel{ width:320px; max-width:32vw; background:#0f1521; border:1px solid #1f2a3a; border-radius:12px; padding:12px 14px; height:fit-content; position:sticky; top:64px; }
+    #panel h2{ font-size:16px; margin:6px 0 10px; }
+    #panel .row{ margin:8px 0; font-size:13px; line-height:1.45; }
+    #panel code{ background:#0b0f16; padding:2px 6px; border-radius:6px; border:1px solid #202b3d; }
+    #panel .small{ font-size:12px; opacity:.8; }
+    #svgbox{ flex:1; overflow:auto; border:1px solid #1f2a3a; border-radius:12px; }
+
+    svg{ width:100%; height:auto; display:block; background:#000; }
+    .bg { image-rendering: auto; }
+    .marker{ cursor:pointer; }
+    .dot{ fill:#ffd166; stroke:#111; stroke-width:1; }
+    .dot.proxima{ fill:#70e000; }
+    .dot.hot{ fill:#ff595e; }
+    .label{ font-size:12px; fill:#e8eefc; paint-order: stroke; stroke:#0b0f16; stroke-width:3px; stroke-linejoin:round; }
+    .tooltip{ position:fixed; pointer-events:none; background:#0f1521; border:1px solid #2a3b56; padding:8px 10px; border-radius:8px; font-size:12px; color:#e8eefc; box-shadow:0 8px 18px rgba(0,0,0,.35); display:none; z-index:5; max-width:320px; }
+    .legend{ position:fixed; right:16px; bottom:16px; background:#0f1521; border:1px solid #2a3b56; border-radius:10px; padding:8px 10px; font-size:12px; color:#cfe0ff; }
+    .legend .sw{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>외계행성 전천 지도 · Equatorial (ICRS, RA/Dec) · SVG</h1>
+    <div class="meta">배경: NASA GSFC SVS Deep Star Map (equirectangular, <b>equatorial</b>) · 좌표: NASA Exoplanet Archive</div>
+  </header>
+
+  <div id="wrap">
+    <div id="panel">
+      <h2>사용법</h2>
+      <div class="row">이 지도는 <b>적경(RA)</b>, <b>적위(Dec)</b> 기준의 전천 배경 위에 외계행성의 <b>모항성</b> 위치를 마커로 표시합니다.</div>
+      <div class="row">배경 이미지는 <b>Equatorial equirectangular</b> 투영을 사용하세요. (은하수 아치형)</div>
+      <div class="row small">배경 파일은 HTML과 같은 폴더에 두고 <code>BG_URL</code> 경로만 맞추면 됩니다.</div>
+      <div class="row"><b>마커 클릭</b> → 정보 카드, <b>마우스 오버</b> → 툴팁 표시.</div>
+      <div class="row"><b>크레딧</b><br>• Background: NASA GSFC / SVS Deep Star Map (2020)<br>• Exoplanet Data: NASA Exoplanet Archive</div>
+    </div>
+
+    <div id="svgbox">
+      <svg id="sky" viewBox="0 0 4096 2048" xmlns="http://www.w3.org/2000/svg" aria-label="All-sky equatorial map with exoplanet host markers">
+        <defs>
+          <style>
+            .card-bg{ fill:#0f1521; stroke:#2a3b56; stroke-width:1; rx:10; ry:10; opacity:.98; }
+            .card-title{ font-size:14px; fill:#e8eefc; font-weight:600; }
+            .card-line{ font-size:12px; fill:#cfe0ff; }
+          </style>
+        </defs>
+        <!-- 배경 이미지: equirectangular (RA:0→360, Dec:+90→−90) -->
+        <image id="bg" class="bg" href="" x="0" y="0" width="4096" height="2048" preserveAspectRatio="none"/>
+        <!-- 마커/라벨 레이어 -->
+        <g id="markers"></g>
+        <!-- 선택 카드 레이어 -->
+        <g id="card-layer"></g>
+      </svg>
+    </div>
+  </div>
+
+  <div id="tooltip" class="tooltip"></div>
+  <div class="legend">
+    <div><span class="sw" style="background:#ffd166"></span> 일반</div>
+    <div><span class="sw" style="background:#70e000"></span> Proxima Cen b (근지구)</div>
+    <div><span class="sw" style="background:#ff595e"></span> 55 Cnc e (초고온)</div>
+  </div>
+
+<script>
+// =========================
+// 1) 배경 이미지 (NASA SVS Deep Star Map, Equatorial equirectangular)
+// 파일을 HTML과 같은 폴더에 둔 경우:
+const BG_URL = "starmap_2020_4k_print.jpg"; // 필요 시 파일명/경로 수정
+
+// =========================
+// 2) 외계행성 (호스트) 데이터: RA/Dec (deg), 기타 메타
+// RA/Dec 출처: NASA Exoplanet Archive / SIMBAD (J2000, ICRS)
+const PLANETS = [
+  { name:"Kepler-22 b",        host:"Kepler-22",      ra:285.679421, dec: 47.898941, note:"거주가능대 후보, 슈퍼지구/미니넵튠 경계" },
+  { name:"TRAPPIST-1 e",       host:"TRAPPIST-1",     ra:346.625000, dec: -5.041000, note:"지구 크기 유사, 거주가능대, 저온 M형 왜성" },
+  { name:"Kepler-452 b",       host:"Kepler-452",     ra:285.681718, dec: 44.373902, note:"지구 2.0 별칭, G형 항성" },
+  { name:"Proxima Centauri b", host:"Proxima Cen",    ra:217.429200, dec:-62.679500, note:"가장 가까운 외계행성, 플레어 환경" },
+  { name:"55 Cancri e",        host:"55 Cnc",         ra:133.151000, dec: 28.330000, note:"초고온 용암행성 후보" }
+];
+
+// =========================
+// 3) RA/Dec → SVG 픽셀 좌표 (equirectangular, equatorial)
+//   - RA: 0→360° (왼쪽이 증가하도록 x 반전; 필요 시 flipRA=false로 바꾸세요)
+//   - Dec: +90→−90° 위→아래
+const W = 4096, H = 2048;
+const flipRA = true;
+function eqToXY(raDeg, decDeg){
+  const x = (flipRA ? (1 - raDeg/360) : (raDeg/360)) * W;
+  const y = (1 - (decDeg + 90)/180) * H;
+  return {x, y};
+}
+
+// =========================
+// 4) 렌더
+const svg = document.getElementById('sky');
+const bg = document.getElementById('bg');
+const gMarkers = document.getElementById('markers');
+const cardLayer = document.getElementById('card-layer');
+const tooltip = document.getElementById('tooltip');
+
+bg.setAttribute('href', BG_URL);
+
+function markerColor(name){
+  if(name.includes('Proxima')) return 'proxima';
+  if(name.includes('55 Cancri e')) return 'hot';
+  return 'normal';
+}
+
+function createMarker(p){
+  const xy = eqToXY(p.ra, p.dec);
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.setAttribute('class','marker');
+  g.setAttribute('tabindex','0');
+
+  const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  dot.setAttribute('class','dot ' + markerColor(p.name));
+  dot.setAttribute('cx', xy.x);
+  dot.setAttribute('cy', xy.y);
+  dot.setAttribute('r', 5);
+
+  const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+  label.setAttribute('class','label');
+  label.setAttribute('x', xy.x + 8);
+  label.setAttribute('y', xy.y - 8);
+  label.textContent = p.name + '  •  ' + p.host;
+
+  g.appendChild(dot);
+  g.appendChild(label);
+
+  // hover tooltip
+  g.addEventListener('mousemove', (e)=>{
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 12) + 'px';
+    tooltip.style.top  = (e.clientY + 12) + 'px';
+    tooltip.innerHTML = `<b>${p.name}</b> <span style="opacity:.75">(${p.host})</span><br>`+
+                        `RA ${p.ra.toFixed(3)}°, Dec ${p.dec.toFixed(3)}°<br>`+
+                        `<span style="opacity:.8">${p.note||''}</span>`;
+  });
+  g.addEventListener('mouseleave', ()=>{ tooltip.style.display='none'; });
+
+  // click → info card
+  g.addEventListener('click', ()=> showCard(p, xy));
+
+  gMarkers.appendChild(g);
+}
+
+function showCard(p, xy){
+  cardLayer.innerHTML = '';
+  const pad = 10, w = 320, h = 120;
+  let cardX = xy.x + 14, cardY = xy.y + 14;
+  if(cardX + w > W) cardX = xy.x - w - 14;
+  if(cardY + h > H) cardY = xy.y - h - 14;
+
+  const bgRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  bgRect.setAttribute('x', cardX);
+  bgRect.setAttribute('y', cardY);
+  bgRect.setAttribute('width', w);
+  bgRect.setAttribute('height', h);
+  bgRect.setAttribute('class','card-bg');
+
+  const t1 = document.createElementNS('http://www.w3.org/2000/svg','text');
+  t1.setAttribute('x', cardX + pad);
+  t1.setAttribute('y', cardY + pad + 14);
+  t1.setAttribute('class','card-title');
+  t1.textContent = `${p.name}  •  ${p.host}`;
+
+  const lines = [
+    `ICRS: RA ${p.ra.toFixed(3)}°, Dec ${p.dec.toFixed(3)}°`,
+    p.note || ''
+  ];
+  lines.forEach((s, i)=>{
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x', cardX + pad);
+    t.setAttribute('y', cardY + 36 + i*18);
+    t.setAttribute('class','card-line');
+    t.textContent = s;
+    cardLayer.appendChild(t);
+  });
+
+  cardLayer.appendChild(bgRect);
+  cardLayer.appendChild(t1);
+}
+
+// 초기 마커 렌더
+PLANETS.forEach(createMarker);
+
+</script>
+</body>
+</html>

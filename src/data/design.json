@@ -1,0 +1,476 @@
+{
+  "version": "1.0",
+  "game": {
+    "title": "Exoplanet Survival (5-Day NASA-based MVP)",
+    "days": 5,
+    "points_budget": 100
+  },
+  "units": {
+    "O2": "kg",
+    "H2O": "L",
+    "Food": "kg",
+    "Power": "kWh",
+    "Health": "0-100 per crew",
+    "Morale": "0-100 team"
+  },
+  "rules": {
+    "base_stocks_for_3_crew_5_days": {
+      "O2": 15,
+      "H2O": 60,
+      "Food": 12,
+      "Power": 80,
+      "Health": 100,
+      "Morale": 100,
+      "notes": "Scale linearly by crew_count/3 at start."
+    },
+    "start_stock_scaling": {
+      "crew_scale_formula": "crew_scale = crew_count / 3",
+      "scaled_stocks": {
+        "O2": "15 * crew_scale",
+        "H2O": "60 * crew_scale",
+        "Food": "12 * crew_scale",
+        "Power": "80 * crew_scale",
+        "Health": "each crew starts at 100",
+        "Morale": "team starts at 100"
+      }
+    },
+    "per_person_daily_metabolism": {
+      "O2": 0.84,
+      "H2O": 3.0,
+      "Food": 0.6,
+      "Power": 1.0,
+      "Health_delta": -2,
+      "Morale_delta": -2,
+      "notes": "Multiply O2/H2O/Food by planet.metabolism."
+    },
+    "hvac": {
+      "habitat_base_power_kwh_per_day": 2,
+      "hvac_base_power_kwh_per_day": 2,
+      "thermx_multiplier": 0.8,
+      "notes": "Total HVAC = hvac_base * planet.hvac *(thermx_multiplier if Therm-X installed)"
+    },
+    "production_baselines": {
+      "Solar_per_array_kwh_per_day": "6 * planet.solar",
+      "NGen_kwh_per_day": 15,
+      "LSS_Bio": { "O2": 1.0, "H2O": 2.0, "Power": -5 },
+      "Greenhouse_small": { "Food": 0.5, "O2": 0.2, "H2O": -1, "Power": -3 }
+    },
+    "daily_update_order": [
+      "apply_event_choice_effects",
+      "apply_module_daily_effects",
+      "apply_crew_metabolism (× planet.metabolism)",
+      "apply_habitat_hvac_power (habitat_base + hvac)",
+      "clamp_resources_to_zero_and_check_fail",
+      "update_health_morale_and_check_fail"
+    ],
+    "end_conditions": {
+      "success": "End of Day 5: Health>0 AND O2>0 AND H2O>0 AND Food>0",
+      "fail_immediate": ["Health<=0", "O2<=0", "H2O<=0", "Food<=0"]
+    },
+    "scoring": {
+      "SurvivalScore": "clamp(Health_end,0,100) + clamp(Morale_end,0,100) + 50 * (FinalResources/InitialResources)",
+      "ResourceEfficiency_percent": "100 * (FinalResources/InitialResources)",
+      "PowerBalance_kWh": "sum(DailyPowerProduced) - sum(DailyPowerConsumed)",
+      "Resources_aggregate": "O2 + H2O + Food + Power",
+      "verdict": {
+        "Excellent": "SurvivalScore>=200 AND PowerBalance_kWh>=0",
+        "Survived": "success AND not Excellent",
+        "Failed": "fail_immediate OR not success at Day 5"
+      }
+    }
+  },
+  "components": {
+    "pricing_notes": "Pick within 100 points.",
+    "Crew": [
+      {
+        "id": "crew_member",
+        "name": "Crew Member",
+        "cost": { "per_person": { "up_to_3": 4, "four_or_more": 6 } },
+        "daily_effects": {
+          "O2": "-0.84 * planet.metabolism",
+          "H2O": "-3.0 * planet.metabolism",
+          "Food": "-0.6 * planet.metabolism",
+          "Power": "-1.0 * planet.metabolism",
+          "Health": -2,
+          "Morale": -2
+        },
+        "notes": "At least one required."
+      }
+    ],
+    "CoreHabitat": [
+      {
+        "id": "hab_dome",
+        "name": "Habitat Dome (required)",
+        "cost": 20,
+        "capacity": { "crew": 4 },
+        "daily_effects": { "Power": -2 },
+        "notes": "Pressurization/ventilation baseline. HVAC separate."
+      },
+      {
+        "id": "therm_x",
+        "name": "Therm-X (Thermal Control)",
+        "cost": 8,
+        "daily_effects": { "Power": "- hvac_base * planet.hvac * 0.8" },
+        "notes": "Reduces HVAC energy ~20%."
+      },
+      {
+        "id": "lss_bio",
+        "name": "LSS-Bio",
+        "cost": 15,
+        "daily_effects": { "O2": 1.0, "H2O": 2.0, "Power": -5 }
+      },
+      {
+        "id": "water_tank",
+        "name": "Water Tank (200 L)",
+        "cost": 7,
+        "daily_effects": { "Power": -0.5 },
+        "start_bonus": { "H2O": "200 * planet.water_eff" },
+        "notes": "Also usable as radiation shielding mass."
+      },
+      {
+        "id": "shield_reg",
+        "name": "Shield-Reg",
+        "cost": 12,
+        "daily_effects": { "Power": -2 },
+        "notes": "Planet radiation requirement varies."
+      },
+      {
+        "id": "battery",
+        "name": "Battery Pack (50 kWh)",
+        "cost": 6,
+        "start_bonus": { "Power": 50 }
+      }
+    ],
+    "Power": [
+      {
+        "id": "solar_array",
+        "name": "Solar Array (~20 m²)",
+        "cost": 8,
+        "daily_effects": { "Power": "6 * planet.solar" }
+      },
+      {
+        "id": "n_gen",
+        "name": "N-Gen (RTG/Nuclear equiv.)",
+        "cost": 22,
+        "daily_effects": { "Power": 15 }
+      }
+    ],
+    "OpsEVA": [
+      {
+        "id": "airlock",
+        "name": "EVA Airlock",
+        "cost": 6,
+        "daily_effects": { "Power": -0.5 },
+        "use_costs": { "EVA_cycle": { "Power": -2 } }
+      },
+      {
+        "id": "workshop",
+        "name": "Workshop",
+        "cost": 8,
+        "daily_effects": { "Power": -2 }
+      },
+      {
+        "id": "spares",
+        "name": "Spares Pack",
+        "cost": 4,
+        "charges": 3,
+        "notes": "Allows 3 repairs."
+      }
+    ],
+    "SustenanceAndLife": [
+      {
+        "id": "agri_pod",
+        "name": "Agri-Pod (Small Greenhouse)",
+        "cost": 12,
+        "daily_effects": { "Food": 0.5, "O2": 0.2, "H2O": -1, "Power": -3 }
+      }
+    ],
+    "CrewLife": [
+      {
+        "id": "quarters",
+        "name": "Private Quarters",
+        "cost": 5,
+        "daily_effects": { "Power": -1, "Morale": "+2_per_crew" }
+      },
+      {
+        "id": "bathroom",
+        "name": "Bathroom / Hygiene",
+        "cost": 6,
+        "daily_effects": { "Power": -1, "H2O": "-2_per_crew", "Health": "+3_per_crew" }
+      },
+      {
+        "id": "community",
+        "name": "Community / Mess",
+        "cost": 8,
+        "daily_effects": { "Power": -2, "H2O": "-1_per_crew", "Food": "-0.1_per_crew", "Morale": "+5_team" }
+      },
+      {
+        "id": "exercise",
+        "name": "Exercise Area",
+        "cost": 6,
+        "daily_effects": { "Power": -1, "Food": "+0.1_per_crew", "Health": "+3_per_crew", "Morale": "+2_per_crew" }
+      },
+      {
+        "id": "medbay",
+        "name": "Medical Bay",
+        "cost": 10,
+        "daily_effects": { "Power": -2 },
+        "on_use": { "Power": -5, "Health": "+10_target" }
+      },
+      {
+        "id": "comms",
+        "name": "Communication Hub",
+        "cost": 5,
+        "daily_effects": { "Power": -1, "Morale": "+4_team" }
+      },
+      {
+        "id": "window",
+        "name": "Observation Window",
+        "cost": 3,
+        "daily_effects": { "Power": -0.5, "Morale": "+2_team" }
+      },
+      {
+        "id": "green_relax",
+        "name": "Greenhouse Relax Zone",
+        "cost": 10,
+        "daily_effects": { "Power": -3, "H2O": -1, "O2": 0.1, "Morale": "+5_team" }
+      }
+    ]
+  },
+  "planets": {
+    "kepler22b": {
+      "name": "Kepler-22b",
+      "modifiers": { "metabolism": 1.15, "solar": 1.0, "hvac": 1.0, "water_eff": 1.2, "shield_need": 0.0 },
+      "start_adjustments": { "O2": 0, "H2O": 0, "Food": 0, "Power": 0 }
+    },
+    "trappist1e": {
+      "name": "TRAPPIST-1e",
+      "modifiers": { "metabolism": 0.9, "solar": 0.6, "hvac": 1.2, "water_eff": 1.0, "shield_need": 0.1 },
+      "start_adjustments": { "O2": 0, "H2O": 0, "Food": 0, "Power": 0 }
+    },
+    "kepler452b": {
+      "name": "Kepler-452b",
+      "modifiers": { "metabolism": 1.05, "solar": 1.1, "hvac": 1.1, "water_eff": 1.0, "shield_need": 0.0 },
+      "start_adjustments": { "O2": 0, "H2O": 0, "Food": 0, "Power": 0 }
+    },
+    "proximab": {
+      "name": "Proxima Centauri b",
+      "modifiers": { "metabolism": 1.0, "solar": 0.5, "hvac": 1.4, "water_eff": 1.0, "shield_need": 0.2 },
+      "start_adjustments": { "O2": 2, "H2O": 0, "Food": 0, "Power": -10 }
+    },
+    "55cancrie": {
+      "name": "55 Cancri e",
+      "modifiers": { "metabolism": 1.15, "solar": 2.0, "hvac": 2.0, "water_eff": 0.7, "shield_need": 0.3 },
+      "start_adjustments": { "O2": 5, "H2O": 40, "Food": 0, "Power": 20 }
+    }
+  },
+  "start_bonuses": {
+    "water_tank": { "H2O": "200 * planet.water_eff" },
+    "battery": { "Power": 50 },
+    "lss_bio": { "O2": 5, "H2O": 10 },
+    "agri_pod": { "Food": 2 },
+    "n_gen": { "Power": 20 },
+    "solar_array": { "Power": "10 * planet.solar" }
+  },
+  "events": {
+    "kepler22b": [
+      { "day": 1, "title": "Oceanic Winds", "effect": "Solar -10% today",
+        "choices": [
+          { "id": "A", "text": "Reinforce habitat exterior", "delta": { "Power": -6 } },
+          { "id": "B", "text": "Ignore and hope it calms", "delta": { "Health": -5 } }
+        ]
+      },
+      { "day": 2, "title": "Water System Leak",
+        "choices": [
+          { "id": "A", "text": "Repair with spares", "delta": { "Power": -5, "Health": -2 }, "flags": { "stop_leak": true } },
+          { "id": "B", "text": "Delay repair", "delta": { "H2O": -20, "Health": -5 } }
+        ]
+      },
+      { "day": 3, "title": "Science Mission: Ocean Probe",
+        "choices": [
+          { "id": "A", "text": "Launch probe", "delta": { "Power": -8, "O2": 5, "Morale": 10 } },
+          { "id": "B", "text": "Skip mission", "delta": { "Morale": -5 } }
+        ]
+      },
+      { "day": 4, "title": "Solar Array Dusting", "effect": "Solar -20% today",
+        "choices": [
+          { "id": "A", "text": "EVA clean panels", "delta": { "Power": -6, "Health": -3 } },
+          { "id": "B", "text": "Do nothing", "delta": { "Power": -6 } }
+        ]
+      },
+      { "day": 5, "title": "Night Storm", "effect": "Solar halved",
+        "choices": [
+          { "id": "A", "text": "Emergency shutdown", "delta": { "Power": 5, "Morale": -5 } },
+          { "id": "B", "text": "Burn backup cells", "delta": { "Power": -15 } }
+        ]
+      }
+    ],
+    "trappist1e": [
+      { "day": 1, "title": "Minor Stellar Flare",
+        "choices": [
+          { "id": "A", "text": "Stay inside & power shielding", "delta": { "Power": -8 } },
+          { "id": "B", "text": "Ignore", "delta": { "Health": -5 } }
+        ]
+      },
+      { "day": 2, "title": "Weak Sunlight", "effect": "Solar -40% today",
+        "choices": [
+          { "id": "A", "text": "Conserve power", "delta": { "Power": 5, "Morale": -3, "Health": -1 } },
+          { "id": "B", "text": "Use backup battery", "delta": { "Power": -8 } }
+        ]
+      },
+      { "day": 3, "title": "Sensor Malfunction",
+        "choices": [
+          { "id": "A", "text": "EVA repair", "delta": { "Power": -5, "Health": -3 }, "flags": { "sensor_fixed": true } },
+          { "id": "B", "text": "Skip repair", "delta": {}, "flags": { "sensor_fixed": false } }
+        ]
+      },
+      { "day": 4, "title": "Major Stellar Flare",
+        "branch": {
+          "if_sensor_fixed": [
+            { "id": "A", "text": "Full lockdown", "delta": { "Power": -10 } },
+            { "id": "B", "text": "Stay active for lab", "delta": { "Health": -10, "O2": 5, "Food": 5 } }
+          ],
+          "if_sensor_failed": [
+            { "id": "AUTO", "text": "Surprised by flare", "delta": { "Health": -8, "Power": -5 } }
+          ]
+        }
+      },
+      { "day": 5, "title": "Psychological Strain",
+        "choices": [
+          { "id": "A", "text": "Host morale activity", "delta": { "Power": -5, "Food": -5, "Health": 10, "Morale": 10 } },
+          { "id": "B", "text": "Push through", "delta": { "Health": -7, "Morale": -5 } }
+        ]
+      }
+    ],
+    "kepler452b": [
+      { "day": 1, "title": "Heavy Landing Shock",
+        "choices": [
+          { "id": "A", "text": "Inspect & reinforce seals", "delta": { "Power": -5, "Health": -2 }, "flags": { "leak_prevented": true } },
+          { "id": "B", "text": "Ignore warning", "delta": { "O2_next_day": -5, "Health": -2 } }
+        ]
+      },
+      { "day": 2, "title": "Increased Metabolic Demand",
+        "choices": [
+          { "id": "A", "text": "Push rations & exercise", "delta": { "Food": -6, "O2": -6, "Health": 5 } },
+          { "id": "B", "text": "Calorie restriction", "delta": { "Food": -3, "Health": -6, "Morale": -4 } }
+        ]
+      },
+      { "day": 3, "title": "Minor Meteor Shower",
+        "choices": [
+          { "id": "A", "text": "EVA quick patch", "delta": { "Power": -5, "Health": -3 } },
+          { "id": "B", "text": "Delay repairs", "delta": { "O2_per_day": -2, "Health_per_day": -3 } }
+        ]
+      },
+      { "day": 4, "title": "Research Opportunity",
+        "choices": [
+          { "id": "A", "text": "Set up small greenhouse", "delta": { "Power": -6, "H2O": -5, "Food_end_bonus": 10, "Morale": 5 } },
+          { "id": "B", "text": "Stay focused on survival", "delta": {} }
+        ]
+      },
+      { "day": 5, "title": "Long Cold Night", "effect": "Solar -50% today",
+        "choices": [
+          { "id": "A", "text": "Use backup battery", "delta": { "Power": -12 } },
+          { "id": "B", "text": "Low-power survival mode", "delta": { "Power": 5, "Health": -8, "Morale": -5 } }
+        ]
+      }
+    ],
+    "proximab": [
+      { "day": 1, "title": "Sudden Stellar Flare",
+        "choices": [
+          { "id": "A", "text": "Activate emergency shielding", "delta": { "Power": -10 } },
+          { "id": "B", "text": "Ride it out", "delta": { "Health": -8 } }
+        ]
+      },
+      { "day": 2, "title": "Solar Interference", "effect": "Solar -50% today",
+        "choices": [
+          { "id": "A", "text": "Power ration", "delta": { "Power": 5, "Health": -3, "Morale": -3 } },
+          { "id": "B", "text": "Use RTG/batteries", "delta": { "Power": -10 } }
+        ]
+      },
+      { "day": 3, "title": "Life Support Failure",
+        "choices": [
+          { "id": "A", "text": "EVA repair", "delta": { "Power": -6, "Health": -3 } },
+          { "id": "B", "text": "Ignore warning", "delta": { "O2_next_day": -10, "Health": -5 } }
+        ]
+      },
+      { "day": 4, "title": "Major Flare Storm",
+        "choices": [
+          { "id": "A", "text": "Deep shelter lockdown", "delta": { "Power": -15 } },
+          { "id": "B", "text": "Stay semi-active", "delta": { "Power": -5, "Health": -6, "Food": 5 } }
+        ]
+      },
+      { "day": 5, "title": "Communications Blackout",
+        "choices": [
+          { "id": "A", "text": "Run emergency comm beacon", "delta": { "Power": -6, "Health": 5, "Morale": 5 } },
+          { "id": "B", "text": "Wait it out", "delta": { "Health": -5, "Morale": -5 } }
+        ]
+      }
+    ],
+    "55cancrie": [
+      { "day": 1, "title": "Lava Vent Eruption",
+        "choices": [
+          { "id": "A", "text": "Emergency cooling boost", "delta": { "Power": -15 } },
+          { "id": "B", "text": "Seal and retreat", "delta": { "Health": -8 } }
+        ]
+      },
+      { "day": 2, "title": "Volcanic Glass Storm", "effect": "Solar -60% today",
+        "choices": [
+          { "id": "A", "text": "EVA clean & patch sensors", "delta": { "Power": -8, "Health": -5 } },
+          { "id": "B", "text": "Stay sheltered", "delta": { "Power": -10 } }
+        ]
+      },
+      { "day": 3, "title": "Toxic Gas Intrusion",
+        "choices": [
+          { "id": "A", "text": "Flush air & scrub", "delta": { "Power": -10, "O2": -10 } },
+          { "id": "B", "text": "Ignore leak", "delta": { "Health": -10 } }
+        ]
+      },
+      { "day": 4, "title": "Reactor Instability",
+        "choices": [
+          { "id": "A", "text": "Divert coolant", "delta": { "Power": -8 } },
+          { "id": "B", "text": "Push reactor harder", "delta": { "Power": 10, "risk": { "prob": 0.25, "onFail": { "Power": -20, "Health": -10 } } } }
+        ]
+      },
+      { "day": 5, "title": "Mega Thermal Surge",
+        "choices": [
+          { "id": "A", "text": "Full lockdown & deep cooling", "delta": { "Power": -20 } },
+          { "id": "B", "text": "Abandon part of the outpost", "delta": { "Power": -5, "Morale": -5, "sacrifice_module": true } }
+        ]
+      }
+    ]
+  },
+  "ending_messages": {
+    "success_generic": "You endured the mission. Systems held; the crew survived.",
+    "failure_generic": "The outpost failed. Resources dwindled and systems collapsed.",
+    "by_cause": {
+      "O2": "The final breath was taken — oxygen reserves ran out.",
+      "H2O": "Dehydration overcame the crew — water was exhausted.",
+      "Food": "Starvation halted all activity — rations were gone.",
+      "Power": "With no power left to run life support, the habitat went dark.",
+      "Health": "Critical injuries and stress pushed the crew beyond survival.",
+      "Morale": "Isolation broke the crew’s spirit — operations ceased."
+    },
+    "planet_flavor": {
+      "kepler22b": {
+        "success": "You endured Kepler-22b’s alien seas and unpredictable winds. A calm blue horizon stretches ahead.",
+        "failure": "The ocean world claimed your fragile outpost. Endless storms silenced your crew."
+      },
+      "trappist1e": {
+        "success": "You outlasted TRAPPIST-1e’s flares and dim skies. The dome lights glow with quiet resilience.",
+        "failure": "Relentless stellar flares crippled life support and broke morale."
+      },
+      "kepler452b": {
+        "success": "On Kepler-452b you mastered gravity and cold nights. Growth is now possible.",
+        "failure": "Micro-fractures and shortages cascaded into failure beneath a heavier sky."
+      },
+      "proximab": {
+        "success": "Against Proxima’s fury you found shelter and discipline — your team made it.",
+        "failure": "Flares and darkness overwhelmed the base before help could arrive."
+      },
+      "55cancrie": {
+        "success": "Amid searing heat and glass storms, your systems held. A miracle of engineering.",
+        "failure": "The lava world’s thermal onslaught consumed the outpost."
+      }
+    }
+  }
+}
